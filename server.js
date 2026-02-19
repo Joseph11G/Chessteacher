@@ -5,6 +5,7 @@ import { Chess } from 'chess.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import os from 'os';
 import {
   PRESET_BOTS,
   chooseBotMove,
@@ -28,6 +29,21 @@ app.use('/vendor/chess.js', express.static(path.join(__dirname, 'node_modules', 
 
 const roomState = new Map();
 const stockfish = new StockfishService();
+
+function getLanIps() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+
+  for (const addresses of Object.values(interfaces)) {
+    for (const address of addresses || []) {
+      if (address.family === 'IPv4' && !address.internal) {
+        ips.push(address.address);
+      }
+    }
+  }
+
+  return [...new Set(ips)];
+}
 
 function readProfiles() {
   try {
@@ -162,7 +178,16 @@ io.on('connection', (socket) => {
   });
 });
 
-const port = process.env.PORT || 3000;
-server.listen(port, () => {
+const port = Number(process.env.PORT) || 3000;
+const host = process.env.HOST || '0.0.0.0';
+
+server.listen(port, host, () => {
   console.log(`ChessTeacher running on http://localhost:${port}`);
+
+  const lanIps = getLanIps();
+  if (lanIps.length) {
+    for (const ip of lanIps) {
+      console.log(`LAN access: http://${ip}:${port}`);
+    }
+  }
 });
