@@ -1,3 +1,5 @@
+import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
+
 const socket = io();
 const chess = new Chess();
 
@@ -11,6 +13,7 @@ const pieceMap = {
 };
 
 let selectedSquare = null;
+let legalTargets = [];
 let currentRoom = new URLSearchParams(window.location.search).get('room') || null;
 let playingBot = null;
 let moveQualityLog = [];
@@ -22,17 +25,21 @@ const chatLog = document.getElementById('chatLog');
 const coach = document.getElementById('coach');
 
 async function loadBots() {
-  const res = await fetch('/api/bots');
-  const data = await res.json();
-  const select = document.getElementById('botSelect');
-  select.innerHTML = '';
+  try {
+    const res = await fetch('/api/bots');
+    const data = await res.json();
+    const select = document.getElementById('botSelect');
+    select.innerHTML = '';
 
-  [...data.preset, ...data.dynamic].forEach((bot) => {
-    const opt = document.createElement('option');
-    opt.value = JSON.stringify(bot);
-    opt.textContent = `${bot.name} (${bot.rating} ELO)`;
-    select.appendChild(opt);
-  });
+    [...data.preset, ...data.dynamic].forEach((bot) => {
+      const opt = document.createElement('option');
+      opt.value = JSON.stringify(bot);
+      opt.textContent = `${bot.name} (${bot.rating} ELO)`;
+      select.appendChild(opt);
+    });
+  } catch {
+    coach.textContent = 'Could not load bots right now. Check server connection.';
+  }
 }
 
 function logChat(message, who = 'Coach') {
@@ -51,7 +58,9 @@ function renderBoard() {
       const algebraic = `${String.fromCharCode(97 + file)}${8 - rank}`;
       square.dataset.square = algebraic;
       square.className = `square ${(rank + file) % 2 === 0 ? 'light' : 'dark'}`;
+
       if (selectedSquare === algebraic) square.classList.add('selected');
+      if (legalTargets.includes(algebraic)) square.classList.add('target');
 
       const piece = board[rank][file];
       square.textContent = piece ? pieceMap[piece.type][piece.color] : '';
@@ -71,58 +80,76 @@ function renderHistory() {
   });
 }
 
+function selectSquare(square) {
+  const piece = chess.get(square);
+  if (!piece || piece.color !== chess.turn()) return;
+
+  selectedSquare = square;
+  legalTargets = chess.moves({ square, verbose: true }).map((move) => move.to);
+  renderBoard();
+}
+
+function clearSelection() {
+  selectedSquare = null;
+  legalTargets = [];
+}
+
 function onSquareClick(square) {
   if (!selectedSquare) {
-    selectedSquare = square;
+    selectSquare(square);
+    return;
+  }
+
+  if (selectedSquare === square) {
+    clearSelection();
     renderBoard();
     return;
   }
 
   const move = { from: selectedSquare, to: square, promotion: 'q' };
-  selectedSquare = null;
+  clearSelection();
 
   const played = chess.move(move);
   if (!played) {
-    renderBoard();
+    selectSquare(square);
     return;
   }
 
-  socket.emit('make-move', { roomId: currentRoom, move });
+  if (currentRoom) socket.emit('make-move', { roomId: currentRoom, move });
   renderBoard();
   renderHistory();
   analyzeMove(played.san);
 
   if (playingBot && !chess.isGameOver()) {
-    setTimeout(() => {
-      socket.emit('bot-move', { roomId: currentRoom, bot: playingBot });
-    }, 350);
+    setTimeout(() => socket.emit('bot-move', { roomId: currentRoom, bot: playingBot }), 350);
   }
 }
 
 async function analyzeMove(san) {
-  const before = chess.fen();
   chess.undo();
   const fenBefore = chess.fen();
   chess.move(san);
 
-  const res = await fetch('/api/analyze-move', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fen: fenBefore, san }),
-  });
+  try {
+    const res = await fetch('/api/analyze-move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fen: fenBefore, san }),
+    });
 
-  const data = await res.json();
-  const best = data.alternatives?.[0];
-  moveQualityLog.push({ san, loss: data.scoreDelta ?? 0, flags: '', result: data.verdict });
+    const data = await res.json();
+    const best = data.alternatives?.[0];
+    moveQualityLog.push({ san, loss: data.scoreDelta ?? 0, flags: '', result: data.verdict });
 
-  coach.textContent = `Verdict: ${data.verdict}. ${data.message}`;
-  logChat(
-    data.verdict === 'best'
-      ? `${san} is excellent. Keep building this habit.`
-      : `${san} works, but consider ${best?.san} next time. Why: better activity and safer king structure.`
-  );
-
-  return before;
+    coach.textContent = `Verdict: ${data.verdict}. ${data.message}`;
+    logChat(
+      data.verdict === 'best'
+        ? `${san} is excellent. Keep building this habit.`
+        : `${san} works, but consider ${best?.san ?? 'a stronger alternative'} next time.`
+    );
+  } catch {
+    coach.textContent = 'Move analysis unavailable right now.';
+  }
 }
 
 function createRoom() {
@@ -137,9 +164,16 @@ function createRoom() {
 
 function joinRoom() {
   if (!currentRoom) {
-    alert('Create a room first or provide ?room=XXXX in URL');
-    return;
+    const id = window.prompt('Enter room code to join:');
+    if (!id) return;
+    currentRoom = id.trim();
   }
+
+  const params = new URLSearchParams(window.location.search);
+  params.set('room', currentRoom);
+  window.history.replaceState({}, '', `?${params.toString()}`);
+  roomLinkEl.textContent = `Current room: ${currentRoom}`;
+
   const playerName = document.getElementById('playerName').value || 'Player';
   socket.emit('join-room', { roomId: currentRoom, playerName });
   logChat(`Joined room ${currentRoom}.`);
@@ -147,16 +181,17 @@ function joinRoom() {
 
 socket.on('room-state', (state) => {
   chess.load(state.fen);
+  clearSelection();
   renderBoard();
   renderHistory();
 
-  if (state.lastMove) {
-    logChat(`Move played: ${state.lastMove.san}`, 'Game');
-  }
+  if (state.lastMove) logChat(`Move played: ${state.lastMove.san}`, 'Game');
+  if (state.gameOver) logChat('Game over. Save profile to grow your adaptive training bot.', 'Coach');
+});
 
-  if (state.gameOver) {
-    logChat('Game over. Save profile to grow your adaptive training bot.', 'Coach');
-  }
+socket.on('invalid-move', () => {
+  coach.textContent = 'Invalid move. Select one of the highlighted legal target squares.';
+  renderBoard();
 });
 
 document.getElementById('newRoomBtn').onclick = createRoom;
@@ -175,31 +210,35 @@ document.getElementById('analyzeBtn').onclick = async () => {
 };
 
 document.getElementById('saveProfileBtn').onclick = async () => {
-  const playerA = document.getElementById('playerName').value;
-  const playerB = document.getElementById('opponentName').value;
+  try {
+    const playerA = document.getElementById('playerName').value;
+    const playerB = document.getElementById('opponentName').value;
 
-  const resultA = chess.isCheckmate() ? (chess.turn() === 'b' ? 'win' : 'loss') : 'draw';
-  const resultB = resultA === 'win' ? 'loss' : resultA === 'loss' ? 'win' : 'draw';
+    const resultA = chess.isCheckmate() ? (chess.turn() === 'b' ? 'win' : 'loss') : 'draw';
+    const resultB = resultA === 'win' ? 'loss' : resultA === 'loss' ? 'win' : 'draw';
 
-  const payload = {
-    playerA,
-    playerB,
-    moves: moveQualityLog,
-    resultA,
-    resultB,
-    avgLossA: average(moveQualityLog.map((m) => m.loss)),
-    avgLossB: average(moveQualityLog.map((m) => m.loss)) + 35,
-  };
+    const payload = {
+      playerA,
+      playerB,
+      moves: moveQualityLog,
+      resultA,
+      resultB,
+      avgLossA: average(moveQualityLog.map((m) => m.loss)),
+      avgLossB: average(moveQualityLog.map((m) => m.loss)) + 35,
+    };
 
-  const res = await fetch('/api/update-profile', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+    const res = await fetch('/api/update-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-  const data = await res.json();
-  await loadBots();
-  logChat(`Adaptive bot updated: ${data.profile.name} now ${data.profile.rating} ELO with style ${JSON.stringify(data.profile.style)}`);
+    const data = await res.json();
+    await loadBots();
+    logChat(`Adaptive bot updated: ${data.profile.name} now ${data.profile.rating} ELO.`);
+  } catch {
+    coach.textContent = 'Could not save adaptive bot profile.';
+  }
 };
 
 function average(values) {
