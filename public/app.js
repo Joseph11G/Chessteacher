@@ -1,4 +1,4 @@
-import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
+import { Chess } from '/vendor/chess.js/chess.js';
 
 const socket = io();
 const chess = new Chess();
@@ -31,7 +31,16 @@ async function loadBots() {
     const select = document.getElementById('botSelect');
     select.innerHTML = '';
 
-    [...data.preset, ...data.dynamic].forEach((bot) => {
+    const bots = [...(data.preset || []), ...(data.dynamic || [])];
+    if (!bots.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No bots available';
+      select.appendChild(opt);
+      return;
+    }
+
+    bots.forEach((bot) => {
       const opt = document.createElement('option');
       opt.value = JSON.stringify(bot);
       opt.textContent = `${bot.name} (${bot.rating} ELO)`;
@@ -197,7 +206,13 @@ socket.on('invalid-move', () => {
 document.getElementById('newRoomBtn').onclick = createRoom;
 document.getElementById('joinRoomBtn').onclick = joinRoom;
 document.getElementById('playBotBtn').onclick = () => {
-  playingBot = JSON.parse(document.getElementById('botSelect').value);
+  const botValue = document.getElementById('botSelect').value;
+  if (!botValue) {
+    coach.textContent = 'No bot selected. Please load bots and try again.';
+    return;
+  }
+
+  playingBot = JSON.parse(botValue);
   if (!currentRoom) createRoom();
   joinRoom();
   logChat(`Playing against ${playingBot.name} at ${playingBot.rating} ELO.`);
