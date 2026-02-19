@@ -137,12 +137,15 @@ io.on('connection', (socket) => {
     }
 
     state.history.push({ san: played.san, from: played.from, to: played.to, flags: played.flags });
+    const player = state.players.find((p) => p.id === socket.id);
+
     io.to(roomId).emit('room-state', {
       fen: state.chess.fen(),
       players: state.players,
       history: state.history,
       turn: state.chess.turn(),
       lastMove: played,
+      lastMoveBy: player?.name || 'Player',
       gameOver: state.chess.isGameOver(),
     });
   });
@@ -156,12 +159,14 @@ io.on('connection', (socket) => {
     const played = state.chess.move({ from: chosen.from, to: chosen.to, promotion: 'q' });
 
     state.history.push({ san: played.san, from: played.from, to: played.to, flags: played.flags, by: bot.name });
+
     io.to(roomId).emit('room-state', {
       fen: state.chess.fen(),
       players: state.players,
       history: state.history,
       turn: state.chess.turn(),
       lastMove: played,
+      lastMoveBy: bot?.name || 'Bot',
       gameOver: state.chess.isGameOver(),
     });
   });
