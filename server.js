@@ -12,6 +12,7 @@ import {
   updateElo,
   buildProfileFromGame,
 } from './src/engine.js';
+import { StockfishService } from './src/stockfish.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const roomState = new Map();
+const stockfish = new StockfishService();
 
 function readProfiles() {
   try {
@@ -43,12 +45,17 @@ app.get('/api/bots', (_req, res) => {
   res.json({ preset: PRESET_BOTS, dynamic: dynamicProfiles });
 });
 
-app.post('/api/analyze-move', (req, res) => {
+app.post('/api/analyze-move', async (req, res) => {
   const { fen, san } = req.body;
   if (!fen || !san) return res.status(400).json({ error: 'fen and san are required' });
 
-  const analysis = explainMoveQuality(fen, san);
-  res.json(analysis);
+  try {
+    const analysis = await stockfish.explainMoveQuality(fen, san);
+    res.json(analysis);
+  } catch {
+    const analysis = explainMoveQuality(fen, san);
+    res.json({ ...analysis, source: 'lightweight' });
+  }
 });
 
 app.post('/api/update-profile', (req, res) => {

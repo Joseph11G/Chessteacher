@@ -17,6 +17,68 @@ npm start
 
 Open `http://localhost:3000`.
 
+## Stockfish server-side analysis (recommended)
+
+The `/api/analyze-move` endpoint now uses Stockfish server-side by default, and automatically falls back to the built-in lightweight evaluator if Stockfish is not available.
+
+### 1) Install Stockfish on your machine
+
+- **Ubuntu/Debian**
+
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y stockfish
+  ```
+
+- **macOS (Homebrew)**
+
+  ```bash
+  brew install stockfish
+  ```
+
+- **Windows**
+  - Install Stockfish and note the full path to `stockfish.exe`.
+
+### 2) Configure environment variables (optional)
+
+You can run with defaults, or tune behavior:
+
+- `STOCKFISH_ENABLED` (default: `true`) — set to `false` to force lightweight analysis.
+- `STOCKFISH_PATH` (default: `stockfish`) — path to the Stockfish binary.
+- `STOCKFISH_DEPTH` (default: `12`) — analysis depth for server evaluations.
+
+Examples:
+
+```bash
+# Linux/macOS
+STOCKFISH_PATH=/usr/games/stockfish STOCKFISH_DEPTH=14 npm start
+
+# disable Stockfish and use lightweight evaluator only
+STOCKFISH_ENABLED=false npm start
+```
+
+```powershell
+# Windows PowerShell
+$env:STOCKFISH_PATH="C:\\tools\\stockfish\\stockfish.exe"
+$env:STOCKFISH_DEPTH="14"
+npm start
+```
+
+### 3) Verify which analysis engine was used
+
+When you analyze a move, the API response includes a `source` field:
+
+- `"stockfish"` when Stockfish was used.
+- `"lightweight"` when fallback mode was used.
+
+Quick check:
+
+```bash
+curl -X POST http://localhost:3000/api/analyze-move \
+  -H "Content-Type: application/json" \
+  -d '{"fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1","san":"e5"}'
+```
+
 ## Play on your phone while server runs on your PC
 
 1. Make sure your PC and phone are on the same Wi-Fi network.
@@ -52,5 +114,5 @@ Open `http://localhost:3000`.
 
 ## Notes
 
-- Current chess AI is a lightweight minimax evaluator (no heavy external engine dependency).
-- For stronger analysis, you can later integrate Stockfish on server side.
+- Lightweight minimax analysis remains available as automatic fallback for portability.
+- Server-side Stockfish gives significantly stronger analysis quality.
