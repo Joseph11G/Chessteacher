@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChessTeacher AI</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/chess.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <h1>ChessTeacher AI</h1>
+        <div class="controls">
+          <input id="playerName" placeholder="Your name" value="Gabriel" />
+          <input id="opponentName" placeholder="Opponent name" value="Godson" />
+          <button id="newRoomBtn">Create Room Link</button>
+          <button id="joinRoomBtn">Join Room</button>
+          <select id="botSelect"></select>
+          <button id="playBotBtn">Play vs Bot</button>
+          <button id="analyzeBtn">Analyze My Last Move</button>
+          <button id="saveProfileBtn">Save Player-vs-Player Skill Bot</button>
+        </div>
+        <p id="roomLink"></p>
+        <div id="coach" class="coach"></div>
+      </section>
+
+      <section class="boardWrap">
+        <div id="board" class="board"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Move History</h2>
+        <ol id="history"></ol>
+        <h2>AI Chat Coach</h2>
+        <div id="chatLog" class="chatLog"></div>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "chessteacher",
+  "version": "1.0.0",
+  "description": "Chess teaching app with AI coaching, room play, and adaptive bots",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "chess.js": "^1.0.0",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
