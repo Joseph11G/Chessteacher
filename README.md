@@ -82,25 +82,42 @@ curl -X POST http://localhost:3000/api/analyze-move \
 ## Play on your phone while server runs on your PC
 
 1. Make sure your PC and phone are on the same Wi-Fi network.
-2. Find your PC LAN IP:
+2. Start the server bound to all network interfaces:
+
+   ```bash
+   HOST=0.0.0.0 npm start
+   ```
+
+   On Windows PowerShell:
+
+   ```powershell
+   $env:HOST="0.0.0.0"
+   npm start
+   ```
+
+3. Find your PC LAN IP:
 
    ```bash
    hostname -I
    ```
 
+   Alternatives:
+
+   - macOS: `ipconfig getifaddr en0`
+   - Windows CMD: `ipconfig`
+   - Windows PowerShell: `(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notmatch 'Loopback'}).IPAddress`
+
    Example output: `192.168.1.24`.
-3. Start the server on your PC:
-
-   ```bash
-   npm start
-   ```
-
 4. On your phone browser, open:
 
    `http://<YOUR_PC_IP>:3000`
 
    Example: `http://192.168.1.24:3000`
-5. If it does not load, allow Node.js through your OS firewall for private networks.
+5. If it does not load:
+   - Allow Node.js through your OS firewall for private networks.
+   - Disable VPN/proxy apps temporarily.
+   - Confirm your phone is on the same subnet as your PC (for example both `192.168.1.x`).
+   - Check server logs: it now prints `LAN access: http://...` addresses you can open directly on your phone.
 
 ## Features implemented
 
