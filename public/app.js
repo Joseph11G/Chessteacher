@@ -17,6 +17,7 @@ let legalTargets = [];
 let currentRoom = new URLSearchParams(window.location.search).get('room') || null;
 let playingBot = null;
 let moveQualityLog = [];
+let lastAnnouncedMove = null;
 
 const boardEl = document.getElementById('board');
 const historyEl = document.getElementById('history');
@@ -51,6 +52,10 @@ async function loadBots() {
   }
 }
 
+function clearChat() {
+  chatLog.innerHTML = '';
+}
+
 function logChat(message, who = 'Coach') {
   const line = document.createElement('p');
   line.textContent = `${who}: ${message}`;
@@ -63,7 +68,8 @@ function renderBoard() {
 
   for (let rank = 0; rank < 8; rank += 1) {
     for (let file = 0; file < 8; file += 1) {
-      const square = document.createElement('div');
+      const square = document.createElement('button');
+      square.type = 'button';
       const algebraic = `${String.fromCharCode(97 + file)}${8 - rank}`;
       square.dataset.square = algebraic;
       square.className = `square ${(rank + file) % 2 === 0 ? 'light' : 'dark'}`;
@@ -71,10 +77,29 @@ function renderBoard() {
       if (selectedSquare === algebraic) square.classList.add('selected');
       if (legalTargets.includes(algebraic)) square.classList.add('target');
 
-      const piece = board[rank][file];
-      square.textContent = piece ? pieceMap[piece.type][piece.color] : '';
+      if (file === 0) {
+        const rankLabel = document.createElement('span');
+        rankLabel.className = 'coord rank';
+        rankLabel.textContent = `${8 - rank}`;
+        square.appendChild(rankLabel);
+      }
 
-      square.onclick = () => onSquareClick(algebraic);
+      if (rank === 7) {
+        const fileLabel = document.createElement('span');
+        fileLabel.className = 'coord file';
+        fileLabel.textContent = String.fromCharCode(97 + file);
+        square.appendChild(fileLabel);
+      }
+
+      const piece = board[rank][file];
+      if (piece) {
+        const pieceEl = document.createElement('span');
+        pieceEl.className = `piece ${piece.color === 'w' ? 'white' : 'black'}`;
+        pieceEl.textContent = pieceMap[piece.type][piece.color];
+        square.appendChild(pieceEl);
+      }
+
+      square.addEventListener('pointerup', () => onSquareClick(algebraic));
       boardEl.appendChild(square);
     }
   }
@@ -120,6 +145,7 @@ function onSquareClick(square) {
 
   const played = chess.move(move);
   if (!played) {
+    coach.textContent = 'Move not made. Pick one of the highlighted legal squares.';
     selectSquare(square);
     return;
   }
@@ -132,6 +158,47 @@ function onSquareClick(square) {
   if (playingBot && !chess.isGameOver()) {
     setTimeout(() => socket.emit('bot-move', { roomId: currentRoom, bot: playingBot }), 350);
   }
+}
+
+function describeMoveThemes(san) {
+  const lowered = san.toLowerCase();
+  const notes = [];
+
+  if (/[a-h][45]/.test(lowered) || lowered.includes('e5') || lowered.includes('e4') || lowered.includes('d4')) {
+    notes.push('helps fight for the center, giving your pieces more room and influence');
+  }
+  if (lowered.includes('x')) {
+    notes.push('wins material or removes an active enemy piece');
+  }
+  if (lowered.includes('+') || lowered.includes('#')) {
+    notes.push('creates direct king pressure and forces defensive replies');
+  }
+  if (lowered === 'o-o' || lowered === 'o-o-o') {
+    notes.push('improves king safety while connecting your rooks for the middlegame');
+  }
+  if (/^[nbrqk]/i.test(san)) {
+    notes.push('develops a piece, so your army joins the game faster');
+  } else if (!notes.length) {
+    notes.push('improves your structure and prepares future tactical ideas');
+  }
+
+  return notes;
+}
+
+function buildDetailedCoachMessage(san, data) {
+  const best = data.alternatives?.[0];
+  const themes = describeMoveThemes(san);
+  const delta = Math.round(data.scoreDelta ?? 0);
+
+  const opening = data.verdict === 'best'
+    ? `${san} is an excellent choice in this position.`
+    : `${san} is playable, but there is a stronger move available.`;
+
+  const comparison = best
+    ? `Stockfish's top recommendation is ${best.san} (about ${delta} centipawns difference).`
+    : 'No stronger continuation was available from this position.';
+
+  return `${opening} Why it can work: ${themes.join('; ')}. ${comparison} ${data.message}`;
 }
 
 async function analyzeMove(san) {
@@ -150,15 +217,23 @@ async function analyzeMove(san) {
     const best = data.alternatives?.[0];
     moveQualityLog.push({ san, loss: data.scoreDelta ?? 0, flags: '', result: data.verdict });
 
-    coach.textContent = `Verdict: ${data.verdict}. ${data.message}`;
-    logChat(
-      data.verdict === 'best'
-        ? `${san} is excellent. Keep building this habit.`
-        : `${san} works, but consider ${best?.san ?? 'a stronger alternative'} next time.`
-    );
+    coach.textContent = `Verdict: ${data.verdict}. ${buildDetailedCoachMessage(san, data)}`;
+    logChat(buildDetailedCoachMessage(san, data));
+
+    if (data.verdict !== 'best' && best?.san) {
+      logChat(`Try this stronger idea next time: ${best.san}.`, 'Coach');
+    }
   } catch {
     coach.textContent = 'Move analysis unavailable right now.';
   }
+}
+
+function resetForNewGame() {
+  moveQualityLog = [];
+  lastAnnouncedMove = null;
+  clearSelection();
+  clearChat();
+  coach.textContent = 'New game started. I will explain each move in detail.';
 }
 
 function createRoom() {
@@ -168,6 +243,7 @@ function createRoom() {
   params.set('room', id);
   window.history.replaceState({}, '', `?${params.toString()}`);
   roomLinkEl.textContent = `Share this link: ${window.location.href}`;
+  resetForNewGame();
   joinRoom();
 }
 
@@ -194,12 +270,17 @@ socket.on('room-state', (state) => {
   renderBoard();
   renderHistory();
 
-  if (state.lastMove) logChat(`Move played: ${state.lastMove.san}`, 'Game');
+  if (state.lastMove?.san && state.lastMove?.san !== lastAnnouncedMove) {
+    const who = state.lastMoveBy || 'Player';
+    logChat(`${who} moved ${state.lastMove.san}.`, 'Game');
+    lastAnnouncedMove = state.lastMove.san;
+  }
+
   if (state.gameOver) logChat('Game over. Save profile to grow your adaptive training bot.', 'Coach');
 });
 
 socket.on('invalid-move', () => {
-  coach.textContent = 'Invalid move. Select one of the highlighted legal target squares.';
+  coach.textContent = 'Move not made. Select one of the highlighted legal target squares.';
   renderBoard();
 });
 
