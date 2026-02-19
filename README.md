@@ -8,7 +8,7 @@ A beginner-focused chess learning app with:
 - Adaptive profile bot creation from named players (e.g., Gabriel vs Godson) that updates after each game.
 - Non-decreasing adaptive bot rating to track improvement.
 
-## Run
+## Run locally
 
 ```bash
 npm install
@@ -16,6 +16,29 @@ npm start
 ```
 
 Open `http://localhost:3000`.
+
+## Play on your phone while server runs on your PC
+
+1. Make sure your PC and phone are on the same Wi-Fi network.
+2. Find your PC LAN IP:
+
+   ```bash
+   hostname -I
+   ```
+
+   Example output: `192.168.1.24`.
+3. Start the server on your PC:
+
+   ```bash
+   npm start
+   ```
+
+4. On your phone browser, open:
+
+   `http://<YOUR_PC_IP>:3000`
+
+   Example: `http://192.168.1.24:3000`
+5. If it does not load, allow Node.js through your OS firewall for private networks.
 
 ## Features implemented
 
@@ -25,7 +48,7 @@ Open `http://localhost:3000`.
 4. **Adaptive bot persistence:** stored in `data/profiles.json` and reused/updated by same `playerA-vs-playerB` key.
 5. **7 preset bots:** 200, 700, 1200, 1700, 2200, 2600, 3000.
 6. **Room links:** create and share `?room=xxxx` URL across phones.
-7. **3D-styled board/pieces:** high-depth shading and pseudo-3D visuals.
+7. **Improved UI and interaction safety:** better colors, responsive layout, legal move highlighting, and clearer room joining flow.
 
 ## Notes
 
