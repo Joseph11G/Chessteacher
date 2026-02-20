@@ -114,11 +114,67 @@ A simple free option for this project is **Render** (works with Express + Socket
    - **Environment**: `Node`
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
-6. Add environment variables in Render dashboard (optional but recommended):
+6. Add environment variables in Render dashboard:
    - `STOCKFISH_ENABLED=true`
    - `STOCKFISH_DEPTH=12`
    - `HOST=0.0.0.0`
+   - `STOCKFISH_PATH=/usr/games/stockfish` (if you install with apt as shown below)
 7. Deploy and open your public URL (for example `https://chessteacher.onrender.com`).
+
+### How to carry Stockfish to Render (important)
+
+Your local Windows `.exe` cannot run directly on Render because Render web services run on Linux. You have 2 practical options:
+
+### Option A (recommended): install Linux Stockfish during build
+
+In Render, set your **Build Command** to:
+
+```bash
+apt-get update && apt-get install -y stockfish && npm install
+```
+
+Then set:
+
+- `STOCKFISH_PATH=/usr/games/stockfish`
+- `STOCKFISH_ENABLED=true`
+
+This tells your app to use the Stockfish binary installed in the Render container.
+
+### Option B: commit a Linux Stockfish binary into your repo
+
+If you do not want apt install at build time, download a Linux Stockfish binary and place it in your repo (for example `bin/stockfish`). Then:
+
+1. Make it executable before commit:
+
+   ```bash
+   chmod +x bin/stockfish
+   ```
+
+2. Set Render env var:
+
+   ```text
+   STOCKFISH_PATH=./bin/stockfish
+   ```
+
+Do **not** use your Windows `.exe` for this option; it must be a Linux executable.
+
+### Quick verify on Render
+
+After deploy, call:
+
+```bash
+curl -X POST https://<your-render-url>/api/analyze-move \
+  -H "Content-Type: application/json" \
+  -d '{"fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1","san":"e5"}'
+```
+
+Check response has:
+
+```json
+"source": "stockfish"
+```
+
+If you get `"source": "lightweight"`, Stockfish path/install is still not configured correctly.
 
 ### Notes for free plan
 
