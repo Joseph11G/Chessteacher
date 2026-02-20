@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Chess } from 'chess.js';
-import { PRESET_BOTS, updateElo, rankMoves, buildProfileFromGame } from '../src/engine.js';
+import { PRESET_BOTS, updateElo, rankMoves, buildProfileFromGame, explainMoveQuality } from '../src/engine.js';
 
 test('preset bots include seven tiers ending at 3000', () => {
   assert.equal(PRESET_BOTS.length, 7);
@@ -29,4 +29,14 @@ test('profile extraction returns bounded fields', () => {
   ]);
   assert.ok(style.aggression >= 0 && style.aggression <= 100);
   assert.ok(style.tactical >= 0 && style.tactical <= 100);
+});
+
+
+test('explainMoveQuality returns strategic idea and target summary fields', () => {
+  const chess = new Chess();
+  const analysis = explainMoveQuality(chess.fen(), 'e4');
+
+  assert.equal(typeof analysis.strategicIdea, 'string');
+  assert.ok(analysis.strategicIdea.length > 0);
+  assert.equal(typeof analysis.targetSummary, 'string');
 });

@@ -101,6 +101,30 @@ Look at the returned JSON:
 - `"source": "stockfish"` means your `.exe` is configured correctly.
 - `"source": "lightweight"` means Stockfish was not found/used (check `STOCKFISH_PATH`).
 
+
+## Publish online for free (Render)
+
+A simple free option for this project is **Render** (works with Express + Socket.IO out of the box).
+
+1. Push your code to GitHub.
+2. Create a free account at [render.com](https://render.com).
+3. Click **New +** → **Web Service**.
+4. Connect your GitHub repo and choose this project.
+5. Use these settings:
+   - **Environment**: `Node`
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+6. Add environment variables in Render dashboard (optional but recommended):
+   - `STOCKFISH_ENABLED=true`
+   - `STOCKFISH_DEPTH=12`
+   - `HOST=0.0.0.0`
+7. Deploy and open your public URL (for example `https://chessteacher.onrender.com`).
+
+### Notes for free plan
+
+- Free instances can sleep when inactive, so first load may be slow.
+- If Stockfish binary is not available in your Render environment, the app automatically falls back to the lightweight analyzer.
+
 ## Play on your phone while server runs on your PC
 
 1. Make sure your PC and phone are on the same Wi-Fi network.
@@ -143,13 +167,13 @@ Look at the returned JSON:
 
 ## Features implemented
 
-1. **Move quality analysis:** every move can be checked for best/good/inaccuracy with top alternatives.
+1. **Move quality analysis:** every move can be checked for best/good/inaccuracy with top alternatives, strategic ideas, and target-focused explanations.
 2. **ELO engine:** bounded 100-3000 rating with no-decrease mode for improvement bots.
 3. **Opponent profiling:** style extraction (aggression, tactical, consistency, opening speed).
 4. **Adaptive bot persistence:** stored in `data/profiles.json` and reused/updated by same `playerA-vs-playerB` key.
 5. **7 preset bots:** 200, 700, 1200, 1700, 2200, 2600, 3000.
 6. **Room links:** create and share `?room=xxxx` URL across phones.
-7. **Improved UI and interaction safety:** better colors, responsive layout, legal move highlighting, and clearer room joining flow.
+7. **Improved UI and interaction safety:** better colors, responsive layout, legal move highlighting, clearer room joining flow, and stricter bot-turn handling in bot games.
 
 ## Notes
 

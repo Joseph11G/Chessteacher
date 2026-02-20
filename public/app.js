@@ -18,6 +18,8 @@ let currentRoom = new URLSearchParams(window.location.search).get('room') || nul
 let playingBot = null;
 let moveQualityLog = [];
 let lastAnnouncedMove = null;
+let botMoveRequestPending = false;
+const humanColor = 'w';
 
 const boardEl = document.getElementById('board');
 const historyEl = document.getElementById('history');
@@ -118,6 +120,11 @@ function selectSquare(square) {
   const piece = chess.get(square);
   if (!piece || piece.color !== chess.turn()) return;
 
+  if (playingBot && piece.color !== humanColor) {
+    coach.textContent = 'You control White in bot games. Wait for the bot to move Black.';
+    return;
+  }
+
   selectedSquare = square;
   legalTargets = chess.moves({ square, verbose: true }).map((move) => move.to);
   renderBoard();
@@ -129,6 +136,11 @@ function clearSelection() {
 }
 
 function onSquareClick(square) {
+  if (playingBot && chess.turn() !== humanColor) {
+    coach.textContent = 'Bot is thinking... please wait for its move.';
+    return;
+  }
+
   if (!selectedSquare) {
     selectSquare(square);
     return;
@@ -154,10 +166,26 @@ function onSquareClick(square) {
   renderBoard();
   renderHistory();
   analyzeMove(played.san);
+  maybeRequestBotMove();
+}
 
-  if (playingBot && !chess.isGameOver()) {
-    setTimeout(() => socket.emit('bot-move', { roomId: currentRoom, bot: playingBot }), 350);
-  }
+function maybeRequestBotMove() {
+  if (!playingBot || !currentRoom || chess.isGameOver()) return;
+
+  const botColor = humanColor === 'w' ? 'b' : 'w';
+  if (chess.turn() !== botColor || botMoveRequestPending) return;
+
+  botMoveRequestPending = true;
+  setTimeout(() => {
+    socket.emit('bot-move', { roomId: currentRoom, bot: playingBot });
+
+    setTimeout(() => {
+      if (chess.turn() === botColor && !chess.isGameOver()) {
+        botMoveRequestPending = false;
+        maybeRequestBotMove();
+      }
+    }, 1200);
+  }, 350);
 }
 
 function describeMoveThemes(san) {
@@ -198,7 +226,10 @@ function buildDetailedCoachMessage(san, data) {
     ? `Stockfish's top recommendation is ${best.san} (about ${delta} centipawns difference).`
     : 'No stronger continuation was available from this position.';
 
-  return `${opening} Why it can work: ${themes.join('; ')}. ${comparison} ${data.message}`;
+  const strategic = data.strategicIdea ? `Strategic idea: ${data.strategicIdea}` : '';
+  const targetSummary = data.targetSummary ? ` ${data.targetSummary}` : '';
+
+  return `${opening} Why it can work: ${themes.join('; ')}. ${strategic}${targetSummary} ${comparison} ${data.message}`.trim();
 }
 
 async function analyzeMove(san) {
@@ -231,8 +262,12 @@ async function analyzeMove(san) {
 function resetForNewGame() {
   moveQualityLog = [];
   lastAnnouncedMove = null;
+  botMoveRequestPending = false;
   clearSelection();
   clearChat();
+  chess.reset();
+  renderBoard();
+  renderHistory();
   coach.textContent = 'New game started. I will explain each move in detail.';
 }
 
@@ -270,6 +305,10 @@ socket.on('room-state', (state) => {
   renderBoard();
   renderHistory();
 
+  if (!playingBot || state.turn === humanColor || state.gameOver) {
+    botMoveRequestPending = false;
+  }
+
   if (state.lastMove?.san && state.lastMove?.san !== lastAnnouncedMove) {
     const who = state.lastMoveBy || 'Player';
     logChat(`${who} moved ${state.lastMove.san}.`, 'Game');
@@ -277,6 +316,7 @@ socket.on('room-state', (state) => {
   }
 
   if (state.gameOver) logChat('Game over. Save profile to grow your adaptive training bot.', 'Coach');
+  maybeRequestBotMove();
 });
 
 socket.on('invalid-move', () => {
@@ -294,8 +334,7 @@ document.getElementById('playBotBtn').onclick = () => {
   }
 
   playingBot = JSON.parse(botValue);
-  if (!currentRoom) createRoom();
-  joinRoom();
+  createRoom();
   logChat(`Playing against ${playingBot.name} at ${playingBot.rating} ELO.`);
 };
 
