@@ -111,6 +111,44 @@ function parseMultiPv(infos, fen, limit = 3) {
     .slice(0, limit);
 }
 
+
+const PIECE_NAMES = {
+  p: 'pawn',
+  n: 'knight',
+  b: 'bishop',
+  r: 'rook',
+  q: 'queen',
+  k: 'king',
+};
+
+function identifyTargets(chess, move) {
+  const targets = [];
+  const board = chess.board();
+
+  for (let rank = 0; rank < 8; rank += 1) {
+    for (let file = 0; file < 8; file += 1) {
+      const piece = board[rank][file];
+      if (!piece || piece.color === move.color) continue;
+
+      const square = `${String.fromCharCode(97 + file)}${8 - rank}`;
+      if (chess.isAttacked(square, move.color)) {
+        targets.push({ square, piece: piece.type });
+      }
+    }
+  }
+
+  return targets;
+}
+
+function buildStrategicIdea(move, target) {
+  if (move.san.includes('#')) return 'This move checkmates, which makes it the most forcing move possible.';
+  if (move.san.includes('+')) return 'This move gives check and forces your opponent to answer the king threat first.';
+  if (move.flags.includes('k') || move.flags.includes('q')) return 'This castling move protects your king and activates a rook.';
+  if (move.flags.includes('c')) return 'This move wins material and removes an active defender or attacker.';
+  if (target) return `This move creates pressure on the ${PIECE_NAMES[target.piece] ?? 'piece'} at ${target.square}.`;
+  return 'This move improves coordination, space, and future tactical chances.';
+}
+
 export class StockfishService {
   constructor({ stockfishPath, depth = 12, enabled = true } = {}) {
     this.stockfishPath = stockfishPath || process.env.STOCKFISH_PATH || 'stockfish';
@@ -148,6 +186,9 @@ export class StockfishService {
         message: 'That move is not legal in this position.',
         alternatives: lines,
         source: 'stockfish',
+        strategicIdea: 'No strategic explanation because the move is illegal.',
+        primaryTarget: null,
+        targetSummary: 'No target identified.',
       };
     }
 
@@ -170,12 +211,22 @@ export class StockfishService {
       reason = 'Playable move, but Stockfish finds a stronger continuation.';
     }
 
+    const targets = identifyTargets(chess, played);
+    const primaryTarget = targets[0] || null;
+    const strategicIdea = buildStrategicIdea(played, primaryTarget);
+    const targetSummary = primaryTarget
+      ? `Main target: ${PIECE_NAMES[primaryTarget.piece]?.toUpperCase() || primaryTarget.piece.toUpperCase()} on ${primaryTarget.square}.`
+      : 'Main target: improve activity and control key squares.';
+
     return {
       verdict,
       scoreDelta: delta,
       message: reason,
       alternatives: bestMoves.lines,
       source: 'stockfish',
+      strategicIdea,
+      primaryTarget,
+      targetSummary,
     };
   }
 }

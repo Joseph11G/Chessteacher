@@ -132,6 +132,39 @@ export function chooseBotMove(fen, bot) {
   return topMoves[0];
 }
 
+
+function identifyTargets(chess, playedMove) {
+  const targets = [];
+  const attackerColor = playedMove.color;
+  const board = chess.board();
+
+  for (let rank = 0; rank < 8; rank += 1) {
+    for (let file = 0; file < 8; file += 1) {
+      const piece = board[rank][file];
+      if (!piece || piece.color === attackerColor) continue;
+      const square = `${String.fromCharCode(97 + file)}${8 - rank}`;
+      if (chess.isAttacked(square, attackerColor)) {
+        targets.push({ square, piece: piece.type, value: PIECE_VALUES[piece.type] ?? 0 });
+      }
+    }
+  }
+
+  return targets.sort((a, b) => b.value - a.value);
+}
+
+function describeStrategicIdea(move, target) {
+  if (move.san.includes('#')) return 'It delivers checkmate, so the game ends immediately.';
+  if (move.san.includes('+')) return 'It gives check, forcing the king to respond and reducing your opponent\'s options.';
+  if (move.flags?.includes('k') || move.flags?.includes('q')) return 'It castles to improve king safety and activate your rook.';
+  if (move.flags?.includes('c')) return 'It captures material, reducing your opponent\'s active resources.';
+  if (target?.piece) {
+    const pieceNames = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+    return `It builds pressure on the ${pieceNames[target.piece] ?? 'piece'} on ${target.square}, creating tactical threats.`;
+  }
+  if (CENTER_SQUARES.has(move.to)) return 'It increases control of the center, giving your pieces better mobility.';
+  if (/^[NBRQK]/.test(move.san)) return 'It develops a piece toward active squares for future attacks or defense.';
+  return 'It improves coordination and keeps your position flexible for the next plan.';
+}
 export function explainMoveQuality(fen, san) {
   const chess = new Chess(fen);
   const legalMoves = chess.moves({ verbose: true });
@@ -142,6 +175,9 @@ export function explainMoveQuality(fen, san) {
       verdict: 'illegal',
       message: 'That move is not legal in this position.',
       alternatives: rankMoves(fen, 2, 3),
+      strategicIdea: 'No strategic explanation because the move is illegal.',
+      primaryTarget: null,
+      targetSummary: 'No target identified.',
     };
   }
 
@@ -162,11 +198,21 @@ export function explainMoveQuality(fen, san) {
     reason = 'Good idea, but there is an even stronger continuation.';
   }
 
+  const targets = identifyTargets(chess, played);
+  const primaryTarget = targets[0] || null;
+  const strategicIdea = describeStrategicIdea(played, primaryTarget);
+  const targetSummary = primaryTarget
+    ? `Main target: ${primaryTarget.piece.toUpperCase()} on ${primaryTarget.square}.`
+    : 'Main target: improves piece activity and board control.';
+
   return {
     verdict,
     scoreDelta: delta,
     message: reason,
     alternatives,
+    strategicIdea,
+    primaryTarget,
+    targetSummary,
   };
 }
 
