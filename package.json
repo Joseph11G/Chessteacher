@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "install:stockfish": "bash scripts/install-stockfish.sh"
   },
   "dependencies": {
     "chess.js": "^1.0.0",

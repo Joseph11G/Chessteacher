@@ -118,45 +118,36 @@ A simple free option for this project is **Render** (works with Express + Socket
    - `STOCKFISH_ENABLED=true`
    - `STOCKFISH_DEPTH=12`
    - `HOST=0.0.0.0`
-   - `STOCKFISH_PATH=/usr/games/stockfish` (if you install with apt as shown below)
+   - `STOCKFISH_PATH=./bin/stockfish`
 7. Deploy and open your public URL (for example `https://chessteacher.onrender.com`).
 
 ### How to carry Stockfish to Render (important)
 
 Your local Windows `.exe` cannot run directly on Render because Render web services run on Linux. You have 2 practical options:
 
-### Option A (recommended): install Linux Stockfish during build
+### Option A (recommended): download Linux Stockfish during Render build (no apt)
 
-In Render, set your **Build Command** to:
+Render Node web services can fail on `apt-get`, so this repo includes a build-safe installer script.
+Use this in Render:
 
-```bash
-apt-get update && apt-get install -y stockfish && npm install
+- **Build Command**: `npm install && npm run install:stockfish`
+- **Start Command**: `npm start`
+- **Env vars**:
+  - `STOCKFISH_ENABLED=true`
+  - `STOCKFISH_PATH=./bin/stockfish`
+
+The script downloads the latest official Linux Stockfish tarball and installs the executable to `bin/stockfish`.
+
+### Option B: commit your own Linux Stockfish binary into the repo
+
+If you prefer not to download during build, commit a Linux binary at `bin/stockfish` and keep:
+
+```text
+STOCKFISH_ENABLED=true
+STOCKFISH_PATH=./bin/stockfish
 ```
 
-Then set:
-
-- `STOCKFISH_PATH=/usr/games/stockfish`
-- `STOCKFISH_ENABLED=true`
-
-This tells your app to use the Stockfish binary installed in the Render container.
-
-### Option B: commit a Linux Stockfish binary into your repo
-
-If you do not want apt install at build time, download a Linux Stockfish binary and place it in your repo (for example `bin/stockfish`). Then:
-
-1. Make it executable before commit:
-
-   ```bash
-   chmod +x bin/stockfish
-   ```
-
-2. Set Render env var:
-
-   ```text
-   STOCKFISH_PATH=./bin/stockfish
-   ```
-
-Do **not** use your Windows `.exe` for this option; it must be a Linux executable.
+Do **not** use your Windows `.exe`; it must be a Linux executable.
 
 ### Quick verify on Render
 
@@ -168,13 +159,19 @@ curl -X POST https://<your-render-url>/api/analyze-move \
   -d '{"fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1","san":"e5"}'
 ```
 
-Check response has:
+Check response has either:
 
 ```json
 "source": "stockfish"
 ```
 
-If you get `"source": "lightweight"`, Stockfish path/install is still not configured correctly.
+or
+
+```json
+"source": "lightweight"
+```
+
+`"lightweight"` means Stockfish was unavailable at runtime (path missing, binary failed, or Stockfish disabled).
 
 ### Notes for free plan
 

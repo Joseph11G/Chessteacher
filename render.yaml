@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: chessteacher
+    env: node
+    plan: free
+    buildCommand: npm install && npm run install:stockfish
+    startCommand: npm start
+    envVars:
+      - key: STOCKFISH_ENABLED
+        value: "true"
+      - key: STOCKFISH_PATH
+        value: "./bin/stockfish"
