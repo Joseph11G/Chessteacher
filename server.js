@@ -58,7 +58,9 @@ function writeProfiles(data) {
 }
 
 app.get('/api/bots', (_req, res) => {
-  const dynamicProfiles = Object.entries(readProfiles()).map(([id, val]) => ({ id, ...val }));
+  const dynamicProfiles = Object.entries(readProfiles())
+    .map(([id, val]) => ({ id, ...val }))
+    .filter((profile) => profile.gameType === 'bot');
   res.json({ preset: PRESET_BOTS, dynamic: dynamicProfiles });
 });
 
@@ -76,27 +78,46 @@ app.post('/api/analyze-move', async (req, res) => {
 });
 
 app.post('/api/update-profile', (req, res) => {
-  const { playerA, playerB, moves, resultA, resultB, avgLossA = 120, avgLossB = 120 } = req.body;
+  const {
+    playerA,
+    playerB,
+    gameType = 'pvp',
+    botRating,
+    moves,
+    resultA,
+    resultB,
+    avgLossA = 120,
+    avgLossB = 120,
+  } = req.body;
   if (!playerA || !playerB) return res.status(400).json({ error: 'player names required' });
 
-  const id = `${playerA.trim().toLowerCase()}-vs-${playerB.trim().toLowerCase()}`;
+  const normalizedA = playerA.trim().toLowerCase();
+  const normalizedB = playerB.trim().toLowerCase();
+  const id = gameType === 'bot'
+    ? `${normalizedA}-vs-bot-${normalizedB}`
+    : `${normalizedA}-vs-${normalizedB}`;
+
   const profiles = readProfiles();
   const current = profiles[id] || {
-    name: `${playerA} vs ${playerB}`,
+    name: gameType === 'bot' ? `${playerA} vs ${playerB} bot` : `${playerA} vs ${playerB}`,
     rating: 800,
     games: 0,
     style: {},
+    gameType,
   };
 
   const style = buildProfileFromGame(moves || []);
   const outcome = resultA === 'win' ? 1 : resultA === 'draw' ? 0.5 : 0;
-  const inferredOpponent = 1200 + Math.max(0, 200 - avgLossA / 2);
+  const inferredOpponent = gameType === 'bot' && Number.isFinite(botRating)
+    ? Number(botRating)
+    : 1200 + Math.max(0, 200 - avgLossA / 2);
 
   current.rating = updateElo(current.rating, inferredOpponent, outcome, 32, 100, 3000, true);
   current.games += 1;
   current.style = style;
   current.avgLossA = avgLossA;
   current.avgLossB = avgLossB;
+  current.gameType = gameType;
 
   profiles[id] = current;
   writeProfiles(profiles);
@@ -105,30 +126,58 @@ app.post('/api/update-profile', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  socket.on('join-room', ({ roomId, playerName }) => {
+  socket.on('join-room', ({ roomId, playerName, mode = 'pvp', bot = null, adminKey = null }) => {
     const existing = roomState.get(roomId) || {
       chess: new Chess(),
       players: [],
       history: [],
+      mode: 'pvp',
+      bot: null,
+      adminKey: null,
+      adminSocketId: null,
     };
 
     if (!existing.players.some((p) => p.id === socket.id)) {
       existing.players.push({ id: socket.id, name: playerName || `Player${existing.players.length + 1}` });
     }
 
+    if (mode === 'bot') {
+      existing.mode = 'bot';
+      existing.bot = bot || existing.bot;
+    }
+
+    if (!existing.adminKey && adminKey) existing.adminKey = adminKey;
+
+    let isAdmin = false;
+    if (existing.adminKey && adminKey && existing.adminKey === adminKey) {
+      existing.adminSocketId = socket.id;
+      isAdmin = true;
+    } else if (!existing.adminSocketId && existing.players.length === 1) {
+      existing.adminSocketId = socket.id;
+      isAdmin = true;
+    }
+
     roomState.set(roomId, existing);
     socket.join(roomId);
+    socket.emit('role-state', { isAdmin });
+
     io.to(roomId).emit('room-state', {
       fen: existing.chess.fen(),
       players: existing.players,
       history: existing.history,
       turn: existing.chess.turn(),
+      mode: existing.mode,
     });
   });
 
   socket.on('make-move', ({ roomId, move }) => {
     const state = roomState.get(roomId);
     if (!state) return;
+
+    if (state.mode === 'bot' && state.chess.turn() === 'b') {
+      socket.emit('invalid-move', { move });
+      return;
+    }
 
     const played = state.chess.move(move);
     if (!played) {
@@ -153,12 +202,16 @@ io.on('connection', (socket) => {
   socket.on('bot-move', ({ roomId, bot }) => {
     const state = roomState.get(roomId);
     if (!state || state.chess.isGameOver()) return;
+    if (state.mode !== 'bot' || state.chess.turn() !== 'b') return;
 
-    const chosen = chooseBotMove(state.chess.fen(), bot);
+    const activeBot = bot || state.bot;
+    if (!activeBot) return;
+
+    const chosen = chooseBotMove(state.chess.fen(), activeBot);
     if (!chosen) return;
     const played = state.chess.move({ from: chosen.from, to: chosen.to, promotion: 'q' });
 
-    state.history.push({ san: played.san, from: played.from, to: played.to, flags: played.flags, by: bot.name });
+    state.history.push({ san: played.san, from: played.from, to: played.to, flags: played.flags, by: activeBot.name });
 
     io.to(roomId).emit('room-state', {
       fen: state.chess.fen(),
@@ -166,13 +219,14 @@ io.on('connection', (socket) => {
       history: state.history,
       turn: state.chess.turn(),
       lastMove: played,
-      lastMoveBy: bot?.name || 'Bot',
+      lastMoveBy: activeBot?.name || 'Bot',
       gameOver: state.chess.isGameOver(),
     });
   });
 
   socket.on('disconnect', () => {
     for (const [roomId, state] of roomState.entries()) {
+      if (state.adminSocketId === socket.id) state.adminSocketId = null;
       state.players = state.players.filter((p) => p.id !== socket.id);
       if (!state.players.length) {
         roomState.delete(roomId);
