@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: chessteacher
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: STOCKFISH_ENABLED
+        value: "false"

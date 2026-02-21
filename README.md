@@ -115,30 +115,25 @@ A simple free option for this project is **Render** (works with Express + Socket
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
 6. Add environment variables in Render dashboard:
-   - `STOCKFISH_ENABLED=true`
+   - `STOCKFISH_ENABLED=false` (recommended for Render Node runtime)
    - `STOCKFISH_DEPTH=12`
    - `HOST=0.0.0.0`
-   - `STOCKFISH_PATH=/usr/games/stockfish` (if you install with apt as shown below)
 7. Deploy and open your public URL (for example `https://chessteacher.onrender.com`).
 
 ### How to carry Stockfish to Render (important)
 
 Your local Windows `.exe` cannot run directly on Render because Render web services run on Linux. You have 2 practical options:
 
-### Option A (recommended): install Linux Stockfish during build
+### Option A (recommended for Node runtime): deploy without apt and use fallback evaluator
 
-In Render, set your **Build Command** to:
+Render Node web services run the build in a restricted environment, so `apt-get` can fail with read-only filesystem errors.
+Use this instead:
 
-```bash
-apt-get update && apt-get install -y stockfish && npm install
-```
+- **Build Command**: `npm install`
+- **Start Command**: `npm start`
+- **Env var**: `STOCKFISH_ENABLED=false`
 
-Then set:
-
-- `STOCKFISH_PATH=/usr/games/stockfish`
-- `STOCKFISH_ENABLED=true`
-
-This tells your app to use the Stockfish binary installed in the Render container.
+This keeps deploys reliable and uses the built-in lightweight analysis engine.
 
 ### Option B: commit a Linux Stockfish binary into your repo
 
@@ -168,13 +163,19 @@ curl -X POST https://<your-render-url>/api/analyze-move \
   -d '{"fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1","san":"e5"}'
 ```
 
-Check response has:
+Check response has either:
 
 ```json
 "source": "stockfish"
 ```
 
-If you get `"source": "lightweight"`, Stockfish path/install is still not configured correctly.
+or
+
+```json
+"source": "lightweight"
+```
+
+`"lightweight"` is expected when `STOCKFISH_ENABLED=false` or no Linux Stockfish binary is present.
 
 ### Notes for free plan
 
