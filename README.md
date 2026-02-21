@@ -5,8 +5,9 @@ A beginner-focused chess learning app with:
 - AI move coaching with alternatives and reasons.
 - 7 built-in bots from 200 to 3000 ELO.
 - Player-vs-player room links for phone-to-phone games.
-- Adaptive profile bot creation from named players (e.g., Gabriel vs Godson) that updates after each game.
-- Non-decreasing adaptive bot rating to track improvement.
+- Admin/owner mode for Gabriel (analysis + save tools are admin-only).
+- Shared room links auto-join guests and keep creator controls private.
+- Adaptive profile saving updates the correct player rating (Gabriel vs bot, opponent in PvP).
 
 ## Run locally
 
@@ -121,6 +122,24 @@ A simple free option for this project is **Render** (works with Express + Socket
    - `STOCKFISH_PATH=./bin/stockfish`
 7. Deploy and open your public URL (for example `https://chessteacher.onrender.com`).
 
+### Updating an existing Render service (already deployed)
+
+If your site is already live on Render, use this quick upgrade flow:
+
+1. Commit and push your latest changes to the same GitHub branch Render watches (usually `main`).
+2. Open your Render service dashboard and click **Manual Deploy** → **Deploy latest commit** (or wait for auto-deploy if enabled).
+3. Confirm these settings are still correct:
+   - Build Command: `npm install && npm run install:stockfish`
+   - Start Command: `npm start`
+4. Confirm environment variables still include:
+   - `HOST=0.0.0.0`
+   - `STOCKFISH_ENABLED=true`
+   - `STOCKFISH_PATH=./bin/stockfish`
+5. After deploy completes, hard refresh your browser and test:
+   - room link auto-join (`?room=xxxx`)
+   - admin-only analyze/save controls
+   - profile save behavior in bot and PvP
+
 ### How to carry Stockfish to Render (important)
 
 Your local Windows `.exe` cannot run directly on Render because Render web services run on Linux. You have 2 practical options:
@@ -223,10 +242,11 @@ or
 1. **Move quality analysis:** every move can be checked for best/good/inaccuracy with top alternatives, strategic ideas, and target-focused explanations.
 2. **ELO engine:** bounded 100-3000 rating with no-decrease mode for improvement bots.
 3. **Opponent profiling:** style extraction (aggression, tactical, consistency, opening speed).
-4. **Adaptive bot persistence:** stored in `data/profiles.json` and reused/updated by same `playerA-vs-playerB` key.
+4. **Adaptive rating persistence:** stored in `data/profiles.json`, with bot games updating Gabriel's rating and PvP saves updating the opponent's rating profile.
 5. **7 preset bots:** 200, 700, 1200, 1700, 2200, 2600, 3000.
-6. **Room links:** create and share `?room=xxxx` URL across phones.
-7. **Improved UI and interaction safety:** better colors, responsive layout, legal move highlighting, clearer room joining flow, and stricter bot-turn handling in bot games.
+6. **Room links:** create and share `?room=xxxx` URL across phones; opening the link auto-joins that room.
+7. **Admin-only coaching controls:** analyze/save features are available only to the room admin (Gabriel).
+8. **Improved UI and interaction safety:** better colors, responsive layout, legal move highlighting, clearer room joining flow, and stricter bot-turn handling in bot games.
 
 ## Notes
 

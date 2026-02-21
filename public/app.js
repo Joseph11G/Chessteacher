@@ -12,6 +12,9 @@ const pieceMap = {
   k: { w: '♔', b: '♚' },
 };
 
+const ADMIN_NAME = 'Gabriel';
+const ADMIN_KEY_PREFIX = 'ct-admin-room-';
+
 let selectedSquare = null;
 let legalTargets = [];
 let currentRoom = new URLSearchParams(window.location.search).get('room') || null;
@@ -19,6 +22,10 @@ let playingBot = null;
 let moveQualityLog = [];
 let lastAnnouncedMove = null;
 let botMoveRequestPending = false;
+let isAdmin = false;
+let playerName = '';
+let roomPlayers = [];
+
 const humanColor = 'w';
 
 const boardEl = document.getElementById('board');
@@ -26,6 +33,49 @@ const historyEl = document.getElementById('history');
 const roomLinkEl = document.getElementById('roomLink');
 const chatLog = document.getElementById('chatLog');
 const coach = document.getElementById('coach');
+const identityEl = document.getElementById('identityText');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const saveProfileBtn = document.getElementById('saveProfileBtn');
+
+function getStoredAdminKey(roomId) {
+  return roomId ? localStorage.getItem(`${ADMIN_KEY_PREFIX}${roomId}`) : null;
+}
+
+function setStoredAdminKey(roomId, key) {
+  localStorage.setItem(`${ADMIN_KEY_PREFIX}${roomId}`, key);
+}
+
+function randomCode(size = 16) {
+  return Math.random().toString(36).slice(2, 2 + size);
+}
+
+function resolveIdentity() {
+  const adminKey = getStoredAdminKey(currentRoom);
+  if (adminKey) {
+    playerName = ADMIN_NAME;
+    return;
+  }
+
+  const remembered = localStorage.getItem('ct-player-name');
+  if (remembered) {
+    playerName = remembered;
+    return;
+  }
+
+  const entered = window.prompt('Enter your name to join this room:', 'Guest');
+  playerName = (entered || 'Guest').trim() || 'Guest';
+  localStorage.setItem('ct-player-name', playerName);
+}
+
+function updateAdminControls() {
+  identityEl.textContent = `Playing as ${playerName || ADMIN_NAME}${isAdmin ? ' (Admin)' : ''}`;
+
+  analyzeBtn.disabled = !isAdmin;
+  saveProfileBtn.disabled = !isAdmin;
+
+  analyzeBtn.title = isAdmin ? '' : 'Only Gabriel (admin) can use analysis.';
+  saveProfileBtn.title = isAdmin ? '' : 'Only Gabriel (admin) can save profiles.';
+}
 
 async function loadBots() {
   try {
@@ -165,8 +215,7 @@ function onSquareClick(square) {
   if (currentRoom) socket.emit('make-move', { roomId: currentRoom, move });
   renderBoard();
   renderHistory();
-  analyzeMove(played.san);
-  maybeRequestBotMove();
+  if (isAdmin) analyzeMove(played.san);
 }
 
 function maybeRequestBotMove() {
@@ -233,6 +282,8 @@ function buildDetailedCoachMessage(san, data) {
 }
 
 async function analyzeMove(san) {
+  if (!isAdmin) return;
+
   chess.undo();
   const fenBefore = chess.fen();
   chess.move(san);
@@ -268,16 +319,24 @@ function resetForNewGame() {
   chess.reset();
   renderBoard();
   renderHistory();
-  coach.textContent = 'New game started. I will explain each move in detail.';
+  coach.textContent = isAdmin
+    ? 'New game started. I will explain each move in detail.'
+    : 'New game started.';
 }
 
 function createRoom() {
   const id = Math.random().toString(36).slice(2, 8);
   currentRoom = id;
+  const adminKey = randomCode();
+  setStoredAdminKey(currentRoom, adminKey);
+  playerName = ADMIN_NAME;
+  isAdmin = true;
+
   const params = new URLSearchParams(window.location.search);
   params.set('room', id);
   window.history.replaceState({}, '', `?${params.toString()}`);
   roomLinkEl.textContent = `Share this link: ${window.location.href}`;
+  updateAdminControls();
   resetForNewGame();
   joinRoom();
 }
@@ -289,18 +348,35 @@ function joinRoom() {
     currentRoom = id.trim();
   }
 
+  resolveIdentity();
+
   const params = new URLSearchParams(window.location.search);
   params.set('room', currentRoom);
   window.history.replaceState({}, '', `?${params.toString()}`);
   roomLinkEl.textContent = `Current room: ${currentRoom}`;
 
-  const playerName = document.getElementById('playerName').value || 'Player';
-  socket.emit('join-room', { roomId: currentRoom, playerName });
-  logChat(`Joined room ${currentRoom}.`);
+  socket.emit('join-room', {
+    roomId: currentRoom,
+    playerName,
+    mode: playingBot ? 'bot' : 'pvp',
+    bot: playingBot,
+    adminKey: getStoredAdminKey(currentRoom),
+  });
+  logChat(`Joined room ${currentRoom}.`, 'Game');
 }
+
+socket.on('role-state', (role) => {
+  isAdmin = Boolean(role?.isAdmin);
+  updateAdminControls();
+
+  if (!isAdmin) {
+    coach.textContent = 'Admin-only analysis is locked for this player.';
+  }
+});
 
 socket.on('room-state', (state) => {
   chess.load(state.fen);
+  roomPlayers = state.players || [];
   clearSelection();
   renderBoard();
   renderHistory();
@@ -315,7 +391,7 @@ socket.on('room-state', (state) => {
     lastAnnouncedMove = state.lastMove.san;
   }
 
-  if (state.gameOver) logChat('Game over. Save profile to grow your adaptive training bot.', 'Coach');
+  if (state.gameOver) logChat('Game over.', 'Coach');
   maybeRequestBotMove();
 });
 
@@ -324,8 +400,16 @@ socket.on('invalid-move', () => {
   renderBoard();
 });
 
-document.getElementById('newRoomBtn').onclick = createRoom;
-document.getElementById('joinRoomBtn').onclick = joinRoom;
+document.getElementById('newRoomBtn').onclick = () => {
+  playingBot = null;
+  createRoom();
+};
+
+document.getElementById('joinRoomBtn').onclick = () => {
+  playingBot = null;
+  joinRoom();
+};
+
 document.getElementById('playBotBtn').onclick = () => {
   const botValue = document.getElementById('botSelect').value;
   if (!botValue) {
@@ -335,32 +419,51 @@ document.getElementById('playBotBtn').onclick = () => {
 
   playingBot = JSON.parse(botValue);
   createRoom();
-  logChat(`Playing against ${playingBot.name} at ${playingBot.rating} ELO.`);
+  logChat(`Playing against ${playingBot.name} at ${playingBot.rating} ELO.`, 'Game');
 };
 
-document.getElementById('analyzeBtn').onclick = async () => {
+analyzeBtn.onclick = async () => {
+  if (!isAdmin) return;
   const last = chess.history().at(-1);
   if (!last) return;
   await analyzeMove(last);
 };
 
-document.getElementById('saveProfileBtn').onclick = async () => {
+saveProfileBtn.onclick = async () => {
+  if (!isAdmin) {
+    coach.textContent = 'Only Gabriel can save profiles.';
+    return;
+  }
+
   try {
-    const playerA = document.getElementById('playerName').value;
-    const playerB = document.getElementById('opponentName').value;
+    const me = ADMIN_NAME;
+    const opponentInRoom = roomPlayers.find((p) => p.name !== me)?.name || 'Opponent';
 
     const resultA = chess.isCheckmate() ? (chess.turn() === 'b' ? 'win' : 'loss') : 'draw';
     const resultB = resultA === 'win' ? 'loss' : resultA === 'loss' ? 'win' : 'draw';
 
-    const payload = {
-      playerA,
-      playerB,
-      moves: moveQualityLog,
-      resultA,
-      resultB,
-      avgLossA: average(moveQualityLog.map((m) => m.loss)),
-      avgLossB: average(moveQualityLog.map((m) => m.loss)) + 35,
-    };
+    const payload = playingBot
+      ? {
+        playerA: me,
+        playerB: playingBot.name,
+        gameType: 'bot',
+        botRating: playingBot?.rating,
+        moves: moveQualityLog,
+        resultA,
+        resultB,
+        avgLossA: average(moveQualityLog.map((m) => m.loss)),
+        avgLossB: average(moveQualityLog.map((m) => m.loss)) + 35,
+      }
+      : {
+        playerA: opponentInRoom,
+        playerB: me,
+        gameType: 'pvp',
+        moves: moveQualityLog,
+        resultA: resultB,
+        resultB: resultA,
+        avgLossA: average(moveQualityLog.map((m) => m.loss)) + 20,
+        avgLossB: average(moveQualityLog.map((m) => m.loss)),
+      };
 
     const res = await fetch('/api/update-profile', {
       method: 'POST',
@@ -369,10 +472,12 @@ document.getElementById('saveProfileBtn').onclick = async () => {
     });
 
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+
     await loadBots();
-    logChat(`Adaptive bot updated: ${data.profile.name} now ${data.profile.rating} ELO.`);
+    logChat(`${payload.playerA} rating updated to ${data.profile.rating} ELO.`, 'Coach');
   } catch {
-    coach.textContent = 'Could not save adaptive bot profile.';
+    coach.textContent = 'Could not save profile.';
   }
 };
 
@@ -382,5 +487,6 @@ function average(values) {
 }
 
 if (currentRoom) joinRoom();
+updateAdminControls();
 loadBots();
 renderBoard();

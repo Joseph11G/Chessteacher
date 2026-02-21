@@ -11,16 +11,15 @@
     <main>
       <section class="panel">
         <h1>ChessTeacher AI</h1>
-        <p class="hint">Create a room, share the link, and play from any device on your network.</p>
+        <p class="hint">Create a room link and share it. Players who open it auto-join that room.</p>
         <div class="controls">
-          <input id="playerName" placeholder="Your name" value="Gabriel" />
-          <input id="opponentName" placeholder="Opponent name" value="Godson" />
+          <p id="identityText" class="identity">Playing as Gabriel</p>
           <button id="newRoomBtn">Create Room Link</button>
           <button id="joinRoomBtn">Join Room</button>
           <select id="botSelect"></select>
           <button id="playBotBtn">Play vs Bot</button>
-          <button id="analyzeBtn">Analyze My Last Move</button>
-          <button id="saveProfileBtn">Save Player-vs-Player Skill Bot</button>
+          <button id="analyzeBtn">Analyze My Last Move (Admin)</button>
+          <button id="saveProfileBtn">Save Game Profile (Admin)</button>
         </div>
         <p id="roomLink"></p>
         <div id="coach" class="coach"></div>
