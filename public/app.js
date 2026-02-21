@@ -12,8 +12,7 @@ const pieceMap = {
   k: { w: '♔', b: '♚' },
 };
 
-const ADMIN_NAME = 'Gabriel';
-const ADMIN_KEY_PREFIX = 'ct-admin-room-';
+const ADMIN_SESSION_KEY = 'ct-admin-session-token';
 
 let selectedSquare = null;
 let legalTargets = [];
@@ -36,26 +35,22 @@ const coach = document.getElementById('coach');
 const identityEl = document.getElementById('identityText');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const saveProfileBtn = document.getElementById('saveProfileBtn');
+const adminLoginBtn = document.getElementById('adminLoginBtn');
+const adminLogoutBtn = document.getElementById('adminLogoutBtn');
 
-function getStoredAdminKey(roomId) {
-  return roomId ? localStorage.getItem(`${ADMIN_KEY_PREFIX}${roomId}`) : null;
+function getAdminSessionToken() {
+  return localStorage.getItem(ADMIN_SESSION_KEY);
 }
 
-function setStoredAdminKey(roomId, key) {
-  localStorage.setItem(`${ADMIN_KEY_PREFIX}${roomId}`, key);
+function setAdminSessionToken(token) {
+  localStorage.setItem(ADMIN_SESSION_KEY, token);
 }
 
-function randomCode(size = 16) {
-  return Math.random().toString(36).slice(2, 2 + size);
+function clearAdminSessionToken() {
+  localStorage.removeItem(ADMIN_SESSION_KEY);
 }
 
 function resolveIdentity() {
-  const adminKey = getStoredAdminKey(currentRoom);
-  if (adminKey) {
-    playerName = ADMIN_NAME;
-    return;
-  }
-
   const remembered = localStorage.getItem('ct-player-name');
   if (remembered) {
     playerName = remembered;
@@ -68,13 +63,18 @@ function resolveIdentity() {
 }
 
 function updateAdminControls() {
-  identityEl.textContent = `Playing as ${playerName || ADMIN_NAME}${isAdmin ? ' (Admin)' : ''}`;
+  identityEl.textContent = playerName
+    ? `Playing as ${playerName}${isAdmin ? ' (Admin)' : ''}`
+    : 'Not joined yet';
 
   analyzeBtn.disabled = !isAdmin;
   saveProfileBtn.disabled = !isAdmin;
 
-  analyzeBtn.title = isAdmin ? '' : 'Only Gabriel (admin) can use analysis.';
-  saveProfileBtn.title = isAdmin ? '' : 'Only Gabriel (admin) can save profiles.';
+  analyzeBtn.title = isAdmin ? '' : 'Only the room admin can use analysis.';
+  saveProfileBtn.title = isAdmin ? '' : 'Only the room admin can save profiles.';
+
+  adminLoginBtn.disabled = isAdmin;
+  adminLogoutBtn.disabled = !getAdminSessionToken();
 }
 
 async function loadBots() {
@@ -266,19 +266,54 @@ function buildDetailedCoachMessage(san, data) {
   const best = data.alternatives?.[0];
   const themes = describeMoveThemes(san);
   const delta = Math.round(data.scoreDelta ?? 0);
+  const moveMeaning = describeSanForHumans(san);
+  const bestMeaning = best?.san ? describeSanForHumans(best.san) : '';
 
   const opening = data.verdict === 'best'
     ? `${san} is an excellent choice in this position.`
     : `${san} is playable, but there is a stronger move available.`;
 
   const comparison = best
-    ? `Stockfish's top recommendation is ${best.san} (about ${delta} centipawns difference).`
+    ? `Stockfish's top recommendation is ${best.san}${bestMeaning ? ` (${bestMeaning})` : ''} (about ${delta} centipawns difference).`
     : 'No stronger continuation was available from this position.';
 
   const strategic = data.strategicIdea ? `Strategic idea: ${data.strategicIdea}` : '';
   const targetSummary = data.targetSummary ? ` ${data.targetSummary}` : '';
 
-  return `${opening} Why it can work: ${themes.join('; ')}. ${strategic}${targetSummary} ${comparison} ${data.message}`.trim();
+  return `${opening} Move meaning: ${moveMeaning}. Why it can work: ${themes.join('; ')}. ${strategic}${targetSummary} ${comparison} ${data.message}`.trim();
+}
+
+function describeSanForHumans(san) {
+  if (!san) return 'unknown move';
+
+  const clean = san.replace(/[+#?!]/g, '');
+  if (clean === 'O-O') return 'king castles kingside';
+  if (clean === 'O-O-O') return 'king castles queenside';
+
+  const pieceNames = {
+    K: 'king',
+    Q: 'queen',
+    R: 'rook',
+    B: 'bishop',
+    N: 'knight',
+  };
+
+  const destination = clean.match(/([a-h][1-8])$/)?.[1] || 'an unknown square';
+  const isCapture = clean.includes('x');
+  const lead = clean[0];
+  const isPieceMove = Boolean(pieceNames[lead]);
+
+  if (isPieceMove) {
+    const piece = pieceNames[lead];
+    return `${piece}${isCapture ? ' captures on' : ' moves to'} ${destination}`;
+  }
+
+  const fromFile = clean.match(/^([a-h])x/)?.[1];
+  if (fromFile && isCapture) {
+    return `pawn from the ${fromFile}-file captures on ${destination}`;
+  }
+
+  return `pawn moves to ${destination}`;
 }
 
 async function analyzeMove(san) {
@@ -327,10 +362,9 @@ function resetForNewGame() {
 function createRoom() {
   const id = Math.random().toString(36).slice(2, 8);
   currentRoom = id;
-  const adminKey = randomCode();
-  setStoredAdminKey(currentRoom, adminKey);
-  playerName = ADMIN_NAME;
-  isAdmin = true;
+  const remembered = localStorage.getItem('ct-player-name');
+  playerName = (remembered || window.prompt('Enter your name for this room:', 'Guest') || 'Guest').trim() || 'Guest';
+  localStorage.setItem('ct-player-name', playerName);
 
   const params = new URLSearchParams(window.location.search);
   params.set('room', id);
@@ -341,8 +375,8 @@ function createRoom() {
   joinRoom();
 }
 
-function joinRoom() {
-  if (!currentRoom) {
+function joinRoom({ forcePrompt = false } = {}) {
+  if (forcePrompt || !currentRoom) {
     const id = window.prompt('Enter room code to join:');
     if (!id) return;
     currentRoom = id.trim();
@@ -360,9 +394,49 @@ function joinRoom() {
     playerName,
     mode: playingBot ? 'bot' : 'pvp',
     bot: playingBot,
-    adminKey: getStoredAdminKey(currentRoom),
+    adminToken: getAdminSessionToken(),
   });
   logChat(`Joined room ${currentRoom}.`, 'Game');
+}
+
+
+async function loginAsAdmin() {
+  const username = window.prompt('Admin login name:', 'Gabriel');
+  if (!username) return;
+
+  const password = window.prompt('Admin password:', 'password');
+  if (password == null) return;
+
+  try {
+    const res = await fetch('/api/admin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim(), password }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+
+    setAdminSessionToken(data.token);
+    coach.textContent = 'Admin login successful. Rejoin or create a room to use admin controls.';
+
+    if (currentRoom) {
+      joinRoom();
+    } else {
+      updateAdminControls();
+    }
+  } catch {
+    coach.textContent = 'Admin login failed. Check username/password.';
+  }
+}
+
+function logoutAdmin() {
+  clearAdminSessionToken();
+  isAdmin = false;
+  updateAdminControls();
+  coach.textContent = 'Admin session cleared on this device.';
+
+  if (currentRoom) joinRoom();
 }
 
 socket.on('role-state', (role) => {
@@ -407,7 +481,15 @@ document.getElementById('newRoomBtn').onclick = () => {
 
 document.getElementById('joinRoomBtn').onclick = () => {
   playingBot = null;
-  joinRoom();
+  joinRoom({ forcePrompt: true });
+};
+
+adminLoginBtn.onclick = () => {
+  loginAsAdmin();
+};
+
+adminLogoutBtn.onclick = () => {
+  logoutAdmin();
 };
 
 document.getElementById('playBotBtn').onclick = () => {
@@ -431,12 +513,12 @@ analyzeBtn.onclick = async () => {
 
 saveProfileBtn.onclick = async () => {
   if (!isAdmin) {
-    coach.textContent = 'Only Gabriel can save profiles.';
+    coach.textContent = 'Only the room admin can save profiles.';
     return;
   }
 
   try {
-    const me = ADMIN_NAME;
+    const me = playerName || 'Admin';
     const opponentInRoom = roomPlayers.find((p) => p.name !== me)?.name || 'Opponent';
 
     const resultA = chess.isCheckmate() ? (chess.turn() === 'b' ? 'win' : 'loss') : 'draw';
@@ -468,7 +550,7 @@ saveProfileBtn.onclick = async () => {
     const res = await fetch('/api/update-profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, adminToken: getAdminSessionToken() }),
     });
 
     const data = await res.json();

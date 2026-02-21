@@ -29,6 +29,10 @@ app.use('/vendor/chess.js', express.static(path.join(__dirname, 'node_modules', 
 
 const roomState = new Map();
 const stockfish = new StockfishService();
+const adminSessions = new Map();
+
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'Gabriel';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
 
 function getLanIps() {
   const interfaces = os.networkInterfaces();
@@ -43,6 +47,18 @@ function getLanIps() {
   }
 
   return [...new Set(ips)];
+}
+
+
+function createAdminSession(username) {
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2, 18)}`;
+  adminSessions.set(token, { username, createdAt: Date.now() });
+  return token;
+}
+
+function isValidAdminToken(token) {
+  if (!token) return false;
+  return adminSessions.has(token);
 }
 
 function readProfiles() {
@@ -62,6 +78,19 @@ app.get('/api/bots', (_req, res) => {
     .map(([id, val]) => ({ id, ...val }))
     .filter((profile) => profile.gameType === 'bot');
   res.json({ preset: PRESET_BOTS, dynamic: dynamicProfiles });
+});
+
+
+app.post('/api/admin-login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'username and password are required' });
+
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const token = createAdminSession(username);
+    return res.json({ token, username });
+  }
+
+  return res.status(401).json({ error: 'Invalid admin credentials' });
 });
 
 app.post('/api/analyze-move', async (req, res) => {
@@ -88,8 +117,10 @@ app.post('/api/update-profile', (req, res) => {
     resultB,
     avgLossA = 120,
     avgLossB = 120,
+    adminToken,
   } = req.body;
   if (!playerA || !playerB) return res.status(400).json({ error: 'player names required' });
+  if (!isValidAdminToken(adminToken)) return res.status(403).json({ error: 'Admin login required' });
 
   const normalizedA = playerA.trim().toLowerCase();
   const normalizedB = playerB.trim().toLowerCase();
@@ -126,14 +157,13 @@ app.post('/api/update-profile', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  socket.on('join-room', ({ roomId, playerName, mode = 'pvp', bot = null, adminKey = null }) => {
+  socket.on('join-room', ({ roomId, playerName, mode = 'pvp', bot = null, adminToken = null }) => {
     const existing = roomState.get(roomId) || {
       chess: new Chess(),
       players: [],
       history: [],
       mode: 'pvp',
       bot: null,
-      adminKey: null,
       adminSocketId: null,
     };
 
@@ -146,16 +176,8 @@ io.on('connection', (socket) => {
       existing.bot = bot || existing.bot;
     }
 
-    if (!existing.adminKey && adminKey) existing.adminKey = adminKey;
-
-    let isAdmin = false;
-    if (existing.adminKey && adminKey && existing.adminKey === adminKey) {
-      existing.adminSocketId = socket.id;
-      isAdmin = true;
-    } else if (!existing.adminSocketId && existing.players.length === 1) {
-      existing.adminSocketId = socket.id;
-      isAdmin = true;
-    }
+    const isAdmin = isValidAdminToken(adminToken);
+    if (isAdmin) existing.adminSocketId = socket.id;
 
     roomState.set(roomId, existing);
     socket.join(roomId);
@@ -197,6 +219,40 @@ io.on('connection', (socket) => {
       lastMoveBy: player?.name || 'Player',
       gameOver: state.chess.isGameOver(),
     });
+
+    if (state.mode === 'bot' && !state.chess.isGameOver() && state.chess.turn() === 'b') {
+      setTimeout(() => {
+        const fresh = roomState.get(roomId);
+        if (!fresh || fresh.mode !== 'bot' || fresh.chess.isGameOver() || fresh.chess.turn() !== 'b') return;
+
+        const activeBot = fresh.bot;
+        if (!activeBot) return;
+
+        const chosen = chooseBotMove(fresh.chess.fen(), activeBot);
+        if (!chosen) return;
+
+        const botPlayed = fresh.chess.move({ from: chosen.from, to: chosen.to, promotion: 'q' });
+        if (!botPlayed) return;
+
+        fresh.history.push({
+          san: botPlayed.san,
+          from: botPlayed.from,
+          to: botPlayed.to,
+          flags: botPlayed.flags,
+          by: activeBot.name,
+        });
+
+        io.to(roomId).emit('room-state', {
+          fen: fresh.chess.fen(),
+          players: fresh.players,
+          history: fresh.history,
+          turn: fresh.chess.turn(),
+          lastMove: botPlayed,
+          lastMoveBy: activeBot?.name || 'Bot',
+          gameOver: fresh.chess.isGameOver(),
+        });
+      }, 250);
+    }
   });
 
   socket.on('bot-move', ({ roomId, bot }) => {
