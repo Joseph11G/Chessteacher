@@ -3,13 +3,13 @@ import { Chess } from '/vendor/chess.js/chess.js';
 const socket = io();
 const chess = new Chess();
 
-const pieceMap = {
-  p: { w: '♙', b: '♟' },
-  r: { w: '♖', b: '♜' },
-  n: { w: '♘', b: '♞' },
-  b: { w: '♗', b: '♝' },
-  q: { w: '♕', b: '♛' },
-  k: { w: '♔', b: '♚' },
+const pieceImageMap = {
+  p: { w: '/assets/pieces/white_pawn.png', b: '/assets/pieces/black_pawn.png' },
+  r: { w: '/assets/pieces/white_rook.png', b: '/assets/pieces/black_rook.png' },
+  n: { w: '/assets/pieces/white_knight.png', b: '/assets/pieces/black_knight.png' },
+  b: { w: '/assets/pieces/white_bishop.png', b: '/assets/pieces/black_bishop.png' },
+  q: { w: '/assets/pieces/white_queen.png', b: '/assets/pieces/black_queen.png' },
+  k: { w: '/assets/pieces/white_king.png', b: '/assets/pieces/black_king.png' },
 };
 
 const ADMIN_SESSION_KEY = 'ct-admin-session-token';
@@ -145,9 +145,11 @@ function renderBoard() {
 
       const piece = board[rank][file];
       if (piece) {
-        const pieceEl = document.createElement('span');
+        const pieceEl = document.createElement('img');
         pieceEl.className = `piece ${piece.color === 'w' ? 'white' : 'black'}`;
-        pieceEl.textContent = pieceMap[piece.type][piece.color];
+        pieceEl.src = pieceImageMap[piece.type][piece.color];
+        pieceEl.alt = `${piece.color === 'w' ? 'White' : 'Black'} ${piece.type}`;
+        pieceEl.draggable = false;
         square.appendChild(pieceEl);
       }
 
