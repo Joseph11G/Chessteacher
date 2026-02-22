@@ -21,7 +21,16 @@ const piecePlaceholderMap = {
   k: 'K',
 };
 
-const PIECE_ASSET_BASE = '/assets/pieces/3d';
+const PIECE_ASSET_BASE = '/assets/pieces';
+
+const pieceAssetNameMap = {
+  p: 'pawn',
+  r: 'rook',
+  n: 'knight',
+  b: 'bishop',
+  q: 'queen',
+  k: 'king',
+};
 
 const ADMIN_SESSION_KEY = 'ct-admin-session-token';
 
@@ -126,6 +135,15 @@ function logChat(message, who = 'Coach') {
 }
 
 
+function getPieceAssetCandidates(piece) {
+  const colorName = piece.color === 'w' ? 'white' : 'black';
+  const longName = pieceAssetNameMap[piece.type] || piece.type;
+  return [
+    `${PIECE_ASSET_BASE}/${colorName}_${longName}.png`,
+    `${PIECE_ASSET_BASE}/3d/${piece.color}${piece.type}.png`,
+  ];
+}
+
 function createPieceElement(piece) {
   const pieceWrap = document.createElement('span');
   pieceWrap.className = `pieceWrap ${piece.color === 'w' ? 'white' : 'black'}`;
@@ -137,10 +155,21 @@ function createPieceElement(piece) {
 
   const img = document.createElement('img');
   img.className = 'piece3d';
-  img.alt = `${piece.color === 'w' ? 'White' : 'Black'} ${piece.type}`;
+  img.alt = `${piece.color === 'w' ? 'White' : 'Black'} ${pieceAssetNameMap[piece.type] || piece.type}`;
   img.loading = 'lazy';
   img.decoding = 'async';
-  img.src = `${PIECE_ASSET_BASE}/${piece.color}${piece.type}.png`;
+
+  const candidates = getPieceAssetCandidates(piece);
+  let idx = 0;
+
+  const showUnicodeFallback = () => {
+    img.remove();
+    const unicode = document.createElement('span');
+    unicode.className = 'pieceFallback';
+    unicode.textContent = pieceMap[piece.type][piece.color];
+    pieceWrap.appendChild(unicode);
+    placeholder.classList.add('hidden');
+  };
 
   img.addEventListener('load', () => {
     img.classList.add('loaded');
@@ -148,13 +177,15 @@ function createPieceElement(piece) {
   });
 
   img.addEventListener('error', () => {
-    img.remove();
-    const unicode = document.createElement('span');
-    unicode.className = 'pieceFallback';
-    unicode.textContent = pieceMap[piece.type][piece.color];
-    pieceWrap.appendChild(unicode);
+    idx += 1;
+    if (idx < candidates.length) {
+      img.src = candidates[idx];
+      return;
+    }
+    showUnicodeFallback();
   });
 
+  img.src = candidates[idx];
   pieceWrap.appendChild(img);
   return pieceWrap;
 }

@@ -201,25 +201,17 @@ button:active {
   opacity: 1;
 }
 
-.piecePlaceholder,
-.pieceFallback {
-  font-size: clamp(1.1rem, 2.6vw, 1.9rem);
-  font-weight: 800;
-  display: grid;
-  place-items: center;
-  width: 72%;
-  aspect-ratio: 1 / 1;
-  border-radius: 999px;
-  background: radial-gradient(circle at 35% 25%, #f3f8ff, #a7bddf 65%, #7087a7);
-  color: #172337;
-  text-shadow: none;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+.piecePlaceholder {
+  position: absolute;
+  inset: auto;
+  font-size: clamp(1rem, 2.2vw, 1.45rem);
+  font-weight: 700;
+  color: rgba(23, 35, 55, 0.45);
+  letter-spacing: 0.02em;
 }
 
-.pieceWrap.black .piecePlaceholder,
-.pieceWrap.black .pieceFallback {
-  background: radial-gradient(circle at 35% 25%, #485870, #2b3448 62%, #1a2030);
-  color: #e8eefc;
+.pieceWrap.black .piecePlaceholder {
+  color: rgba(232, 238, 252, 0.45);
 }
 
 .piecePlaceholder.hidden {
