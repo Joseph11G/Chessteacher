@@ -12,6 +12,17 @@ const pieceMap = {
   k: { w: '♔', b: '♚' },
 };
 
+const piecePlaceholderMap = {
+  p: 'P',
+  r: 'R',
+  n: 'N',
+  b: 'B',
+  q: 'Q',
+  k: 'K',
+};
+
+const PIECE_ASSET_BASE = '/assets/pieces/3d';
+
 const ADMIN_SESSION_KEY = 'ct-admin-session-token';
 
 let selectedSquare = null;
@@ -114,6 +125,40 @@ function logChat(message, who = 'Coach') {
   chatLog.prepend(line);
 }
 
+
+function createPieceElement(piece) {
+  const pieceWrap = document.createElement('span');
+  pieceWrap.className = `pieceWrap ${piece.color === 'w' ? 'white' : 'black'}`;
+
+  const placeholder = document.createElement('span');
+  placeholder.className = 'piecePlaceholder';
+  placeholder.textContent = piecePlaceholderMap[piece.type] || '?';
+  pieceWrap.appendChild(placeholder);
+
+  const img = document.createElement('img');
+  img.className = 'piece3d';
+  img.alt = `${piece.color === 'w' ? 'White' : 'Black'} ${piece.type}`;
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.src = `${PIECE_ASSET_BASE}/${piece.color}${piece.type}.png`;
+
+  img.addEventListener('load', () => {
+    img.classList.add('loaded');
+    placeholder.classList.add('hidden');
+  });
+
+  img.addEventListener('error', () => {
+    img.remove();
+    const unicode = document.createElement('span');
+    unicode.className = 'pieceFallback';
+    unicode.textContent = pieceMap[piece.type][piece.color];
+    pieceWrap.appendChild(unicode);
+  });
+
+  pieceWrap.appendChild(img);
+  return pieceWrap;
+}
+
 function renderBoard() {
   boardEl.innerHTML = '';
   const board = chess.board();
@@ -144,12 +189,7 @@ function renderBoard() {
       }
 
       const piece = board[rank][file];
-      if (piece) {
-        const pieceEl = document.createElement('span');
-        pieceEl.className = `piece ${piece.color === 'w' ? 'white' : 'black'}`;
-        pieceEl.textContent = pieceMap[piece.type][piece.color];
-        square.appendChild(pieceEl);
-      }
+      if (piece) square.appendChild(createPieceElement(piece));
 
       square.addEventListener('pointerup', () => onSquareClick(algebraic));
       boardEl.appendChild(square);

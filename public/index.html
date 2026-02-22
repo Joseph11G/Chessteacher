@@ -8,8 +8,8 @@
     <script src="/socket.io/socket.io.js"></script>
   </head>
   <body>
-    <main>
-      <section class="panel">
+    <main class="appShell">
+      <aside class="panel leftPanel">
         <h1>ChessTeacher AI</h1>
         <p class="hint">Create a room link and share it. Players who open it auto-join that room.</p>
         <div class="controls">
@@ -23,20 +23,22 @@
           <button id="analyzeBtn">Analyze My Last Move (Admin)</button>
           <button id="saveProfileBtn">Save Game Profile (Admin)</button>
         </div>
-        <p id="roomLink"></p>
+        <p id="roomLink" class="roomLink"></p>
         <div id="coach" class="coach"></div>
+      </aside>
+
+      <section class="boardSection" aria-label="Chess board">
+        <div class="boardShell">
+          <div id="board" class="board"></div>
+        </div>
       </section>
 
-      <section class="boardWrap">
-        <div id="board" class="board"></div>
-      </section>
-
-      <section class="panel">
+      <aside class="panel rightPanel">
         <h2>Move History</h2>
         <ol id="history"></ol>
         <h2>AI Chat Coach</h2>
         <div id="chatLog" class="chatLog"></div>
-      </section>
+      </aside>
     </main>
 
     <script type="module" src="app.js"></script>
