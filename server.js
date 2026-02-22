@@ -293,8 +293,8 @@ io.on('connection', (socket) => {
   });
 });
 
-const port = Number(process.env.PORT) || 3000;
-const host = process.env.HOST || '0.0.0.0';
+const port = 7860;
+const host = '0.0.0.0';
 
 server.listen(port, host, () => {
   console.log(`ChessTeacher running on http://localhost:${port}`);

@@ -70,6 +70,8 @@ async function runStockfishCommand({ stockfishPath, fen, depth = 12, multiPv = 1
 
     engine.stdin.write('uci\n');
     engine.stdin.write('isready\n');
+    engine.stdin.write('setoption name Threads value 1\n');
+    engine.stdin.write('setoption name Hash value 16\n');
     engine.stdin.write(`setoption name MultiPV value ${multiPv}\n`);
     engine.stdin.write(`position fen ${fen}\n`);
     engine.stdin.write(`go depth ${depth}\n`);
@@ -151,7 +153,7 @@ function buildStrategicIdea(move, target) {
 
 export class StockfishService {
   constructor({ stockfishPath, depth = 12, enabled = true } = {}) {
-    this.stockfishPath = stockfishPath || process.env.STOCKFISH_PATH || 'stockfish';
+    this.stockfishPath = stockfishPath || 'stockfish';
     this.depth = Number(process.env.STOCKFISH_DEPTH || depth);
     this.enabled = String(process.env.STOCKFISH_ENABLED ?? enabled) !== 'false';
   }
